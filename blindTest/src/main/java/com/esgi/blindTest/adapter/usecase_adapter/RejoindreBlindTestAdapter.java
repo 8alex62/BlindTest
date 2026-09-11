@@ -35,7 +35,9 @@ public class RejoindreBlindTestAdapter implements RejoindreBlindTestUseCase.Outp
     @Override
     public BlindTest save(BlindTest blindTest) {
         BlindTest enregistre = blindTestRepository.save(blindTest);
-        for (Participation participation : enregistre.getParticipations()) {
+        // On parcourt l'agregat que le domaine vient de modifier : la valeur renvoyee par
+        // le port a ete relue en base, elle ne contient pas encore la nouvelle participation.
+        for (Participation participation : blindTest.getParticipations()) {
             if (participation.getId() == null) {
                 participationRepository.enregistrer(enregistre.getId(), participation);
             }

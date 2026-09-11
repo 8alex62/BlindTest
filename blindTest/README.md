@@ -13,7 +13,7 @@ L'objet du projet est le **respect de la Clean Architecture**, pas la richesse f
 1. [Démarrer](#1-démarrer)
 2. [Les couches et la règle de dépendance](#2-les-couches-et-la-règle-de-dépendance)
 3. [Comment chaque couche respecte la règle](#3-comment-chaque-couche-respecte-la-règle)
-4. [Le domaine porte les règles métier](#4-le-domaine-porte-les-règles-métier)
+4. [Où vivent les règles métier](#4-où-vivent-les-règles-métier)
 5. [L'arbitrage du premier clic](#5-larbitrage-du-premier-clic)
 6. [Champs ajoutés par rapport au diagramme](#6-champs-ajoutés-par-rapport-au-diagramme)
 7. [Classes ajoutées et écarts assumés](#7-classes-ajoutées-et-écarts-assumés)
@@ -43,7 +43,7 @@ sont insérés au démarrage.
 | `/inscription` | créer un compte |
 | `/connexion` | se connecter (dépose le jeton JWT dans un cookie `HttpOnly`) |
 | `/blindtests` | lister et créer des blind tests |
-| `/blindtests/{id}` | salle de jeu : lecteur audio, bouton « J'ai trouvé », scores |
+| `/blindtests/{nom}` | salle de jeu : lecteur audio, bouton « J'ai trouvé », scores |
 
 Pour jouer une partie complète il faut **trois comptes** : ouvrez trois fenêtres de navigation
 privée, inscrivez et connectez un participant dans chacune, puis rejoignez le même blind test.
@@ -61,8 +61,8 @@ du modèle Visual Paradigm (`UML/projet_blind_test.vpp`).
 
 | Couche | Package | Contenu | Dépend de |
 |---|---|---|---|
-| **Domaine** | `domain.model`, `domain.exception` | `Participant`, `BlindTest`, `Morceau`, `Participation` et les exceptions métier | rien |
-| **Application** | `domain.usecase`, `domain.repository` | les use cases, leurs `OutputPort` et les ports de persistance | le domaine seul |
+| **Domaine** | `domain.model`, `domain.exception` | `Participant`, `BlindTest`, `Morceau`, `Participation` — de simples porteurs de données — et les exceptions métier | rien |
+| **Application** | `domain.usecase`, `domain.repository` | les use cases, qui **appliquent les règles**, leurs `OutputPort` et les ports de persistance | le domaine seul |
 | **Adapters** | `adapter.usecase_adapter`, `adapter.mapper`, `adapter.repository` | implémentations des `OutputPort` et des ports, mappers MapStruct | domaine, application, infrastructure |
 | **Infrastructure** | `infra.persistance.entity`, `.repository`, `.initialisation` | entités JPA, repositories Spring Data, données de démarrage | domaine |
 | **Présentation** | `presentation.controller.rest`, `.web`, `presentation.request`, `.response` | contrôleurs REST, pages Thymeleaf, DTO | domaine, application, adapters |
@@ -86,7 +86,12 @@ Les diagrammes Mermaid détaillés sont dans [docs/architecture.md](docs/archite
 `jakarta.validation` (voir l'écart assumé au §7). Aucun import de `jakarta.persistence`,
 `org.mapstruct`, `org.springframework.data` ou `org.springframework.web` — vérifié par ArchUnit.
 
-### 3.2 Les use cases ne connaissent que leur port de sortie
+Les quatre modèles sont des **porteurs de données**, sans identifiant technique ni méthode,
+exactement comme `Enchere`, `Participant`, `Offre` et `Article` dans le projet de référence.
+L'identité passe par des clés naturelles : le `nom` pour un blind test ou un morceau, l'`email`
+pour un participant.
+
+### 3.2 Les use cases appliquent les règles et ne connaissent que leur port de sortie
 
 Chaque use case est une classe à **une seule méthode publique `apply`**, avec une interface
 imbriquée `OutputPort` :
@@ -105,16 +110,30 @@ public class MettreEnPauseBlindTestUseCase {
 
     public void apply(Participant participant, BlindTest blindtest) {
         BlindTest courant = output.findBlindTest(blindtest);
-        courant.reserverLaReponse(participant);          // la règle est dans le domaine
-        if (!output.reserverLaReponse(courant)) {        // la base arbitre l'ordre
-            courant.annulerLaReservation();
+
+        if (courant.getStatut() != StatutBlindTest.EN_COURS) {
+            throw new BlindTestNonDemarreException();
+        }
+        if (!estInscrit(courant, participant)) {
+            throw new ParticipantHorsBlindTestException();
+        }
+        // Règle métier : un seul réservataire de réponse à la fois.
+        if (courant.getReservataire() != null) {
+            throw new ReponseDejaReserveeException();
+        }
+
+        courant.setEtatLecture(EtatLecture.PAUSE);
+        courant.setReservataire(participant);
+
+        // La base n'arbitre pas la règle, elle arbitre l'ordre d'arrivée.
+        if (!output.reserverLaReponse(courant)) {
+            courant.setReservataire(null);
+            courant.setEtatLecture(EtatLecture.LECTURE);
             throw new ReponseDejaReserveeException();
         }
     }
 }
 ```
-
-Le use case orchestre, il ne décide pas : la décision métier est prise par l'agrégat `BlindTest`.
 
 ### 3.3 Un adapter par use case porte les repositories
 
@@ -132,15 +151,17 @@ dépend uniquement des **interfaces** de `domain.repository` :
 ### 3.4 Aucune entité JPA ne sort de l'infrastructure
 
 `ParticipantEntity`, `BlindTestEntity`, `MorceauEntity` et `ParticipationEntity` vivent dans
-`infra.persistance.entity`. Seuls `adapter.mapper` (MapStruct) et `adapter.repository` les
-manipulent. Les `...RepositoryImpl` renvoient **toujours** des objets du domaine :
+`infra.persistance.entity` — et ce sont **elles seules** qui portent un `@Id Long id`.
+L'identifiant technique redevient ce qu'il doit être : une préoccupation de persistance qui ne
+franchit pas la frontière. Seuls `adapter.mapper` (MapStruct) et `adapter.repository` les
+manipulent, et les `...RepositoryImpl` renvoient **toujours** des objets du domaine :
 
 ```java
 @Override
 @Transactional(readOnly = true)
-public Optional<BlindTest> findById(Long id) {
+public Optional<BlindTest> findByNom(String nom) {
     // Le mapping se fait dans la transaction : les collections paresseuses sont lisibles.
-    return blindTestJpaRepository.findById(id).map(blindTestEntityMapper::toEntity);
+    return blindTestJpaRepository.findByNom(nom).map(blindTestEntityMapper::toEntity);
 }
 ```
 
@@ -158,26 +179,25 @@ vérifié par ArchUnit.
 
 ---
 
-## 4. Le domaine porte les règles métier
+## 4. Où vivent les règles métier
 
-Toutes les règles sont des méthodes de `BlindTest`
-([BlindTest.java](src/main/java/com/esgi/blindTest/domain/model/BlindTest.java)),
-aucune n'est dans un service, un adapter ou un contrôleur.
+Les modèles étant de simples porteurs de données, **les règles sont appliquées par les use
+cases**, dans le package `domain` : jamais par un service, un adapter ou un contrôleur.
 
-| Règle | Méthode | Exception |
+| Règle | Appliquée par | Exception |
 |---|---|---|
-| Un blind test est une séquence de 7 morceaux | `ajouterLesMorceaux` | `NombreDeMorceauxInvalideException` |
-| Au maximum 3 participants | `rejoindre` | `BlindTestCompletException` |
-| Un participant ne rejoint qu'une fois | `rejoindre` | `ParticipantDejaPresentException` |
-| Le blind test démarre à 3 participants | `rejoindre` → `demarrer` | — |
-| Au démarrage, le premier morceau est joué | `demarrer` | `BlindTestIncompletException` |
-| Le premier clic met en pause et réserve la réponse | `reserverLaReponse` | `BlindTestNonDemarreException`, `ParticipantHorsBlindTestException` |
-| Un seul réservataire à la fois | `reserverLaReponse` | `ReponseDejaReserveeException` |
-| Seul le réservataire peut répondre | `repondre` | `ReponseNonReserveeException` |
-| Une bonne réponse rapporte un point | `repondre` → `Participation.ajouterUnPoint` | — |
-| Une mauvaise réponse relance la lecture | `repondre` → `annulerLaReservation` | — |
-| Après 7 morceaux : terminé, scores figés | `passerAuMorceauSuivant` | `BlindTestTermineException` |
-| Comparaison sans casse, accents ni espaces superflus | `Morceau.correspondA` | — |
+| Un blind test est une séquence de 7 morceaux | `AjouterBlindTestUseCase` | `NombreDeMorceauxInvalideException` |
+| Au maximum 3 participants | `RejoindreBlindTestUseCase` | `BlindTestCompletException` |
+| Un participant ne rejoint qu'une fois | `RejoindreBlindTestUseCase` | `ParticipantDejaPresentException` |
+| Le blind test démarre à 3 participants | `RejoindreBlindTestUseCase` | — |
+| Au démarrage, le premier morceau est joué | `RejoindreBlindTestUseCase`, `LancerBlindTestUseCase` | `BlindTestIncompletException`, `BlindTestDejaDemarreException` |
+| Le premier clic met en pause et réserve la réponse | `MettreEnPauseBlindTestUseCase` | `BlindTestNonDemarreException`, `ParticipantHorsBlindTestException` |
+| Un seul réservataire à la fois | `MettreEnPauseBlindTestUseCase` | `ReponseDejaReserveeException` |
+| Seul le réservataire peut répondre | `FaireUnePropositionUseCase` | `ReponseNonReserveeException` |
+| Une bonne réponse rapporte un point | `FaireUnePropositionUseCase` | — |
+| Une mauvaise réponse relance la lecture | `FaireUnePropositionUseCase` | — |
+| Après 7 morceaux : terminé, scores figés | `FaireUnePropositionUseCase` | `BlindTestTermineException` |
+| Comparaison sans casse, accents ni espaces superflus | `FaireUnePropositionUseCase` | — |
 
 La normalisation des titres est du Java pur (`java.text.Normalizer`) : décomposition NFD,
 suppression des diacritiques, réduction des espaces multiples, minuscules en `Locale.ROOT`,
@@ -190,10 +210,10 @@ et traitement des ligatures (`œ`, `æ`) et de l'apostrophe typographique.
 Le sujet impose que le serveur soit seul juge et que la réservation résiste aux accès
 simultanés, sans mettre cette logique dans le contrôleur. Deux mécanismes se complètent.
 
-**La règle est dans le domaine.** `BlindTest.reserverLaReponse(participant)` vérifie que le
-blind test est en cours, que le participant y est inscrit et que personne n'a encore la main,
-puis passe en pause et enregistre le réservataire. Cette règle se teste sans base de données :
-deux appels successifs sur le même objet et le second lève `ReponseDejaReserveeException`.
+**La règle est dans le domaine.** `MettreEnPauseBlindTestUseCase.apply` vérifie que le blind
+test est en cours, que le participant y est inscrit et que personne n'a encore la main, puis
+passe en pause et enregistre le réservataire. Cette règle se teste sans base de données : deux
+appels successifs et le second lève `ReponseDejaReserveeException`.
 
 **L'ordre d'arrivée est arbitré par la base.** Quand trois requêtes HTTP évaluent la règle en
 parallèle sur trois copies mémoire toutes valides, il faut trancher qui est arrivé le premier.
@@ -201,18 +221,18 @@ parallèle sur trois copies mémoire toutes valides, il faut trancher qui est ar
 
 ```sql
 UPDATE blind_test
-   SET id_participant_reservataire = :idParticipant,
+   SET reservataire_id = :idParticipant,
        etat_lecture = 'PAUSE',
        version = version + 1
- WHERE id = :idBlindTest
+ WHERE nom = :nom
    AND statut = 'EN_COURS'
    AND index_morceau_courant = :indexMorceau
-   AND id_participant_reservataire IS NULL
+   AND reservataire_id IS NULL
 ```
 
 Le premier `UPDATE` verrouille la ligne ; le second réévalue sa clause `WHERE` sur la version
-validée, ne trouve plus `id_participant_reservataire IS NULL` et modifie zéro ligne. Le port du
-domaine expose ce résultat en vocabulaire métier — `boolean reserverLaReponse(BlindTest)`,
+validée, ne trouve plus `reservataire_id IS NULL` et modifie zéro ligne. Le port du domaine
+expose ce résultat en vocabulaire métier — `boolean reserverLaReponse(BlindTest)`,
 « ai-je pris la main ? » — et le use case en tire la conséquence définie par la règle.
 
 En résumé : **la base de données n'arbitre pas la règle, elle arbitre l'ordre.**
@@ -229,22 +249,24 @@ deux `409` avec le message « Un autre participant a déjà pris la main sur ce 
 
 ## 6. Champs ajoutés par rapport au diagramme
 
-Le diagramme de classes ne porte que `email` / `motDePasse` (`Participant`), `nom`
-(`BlindTest`, `Morceau`) et `score` (`Participation`). Les champs techniques suivants ont été
-ajoutés, au strict minimum :
+Le diagramme de classes porte `email` / `motDePasse` (`Participant`), `nom` (`BlindTest`,
+`Morceau`) et `score` (`Participation`). Les modèles n'ont **aucun identifiant technique** :
+l'`id` reste dans les entités JPA. Les seuls champs ajoutés sont ceux sans lesquels la partie
+ne pourrait pas se dérouler :
 
 | Champ | Classe | Justification |
 |---|---|---|
-| `id` | les quatre | identité persistante, nécessaire à JPA et aux URL REST |
 | `statut` | `BlindTest` | distingue « en attente », « en cours » et « terminé », condition de presque toutes les règles |
 | `indexMorceauCourant` | `BlindTest` | position dans la séquence des sept morceaux |
 | `etatLecture` | `BlindTest` | indique au navigateur s'il doit jouer ou mettre en pause |
-| `idParticipantReservataire` | `BlindTest` | identifie le gagnant du premier clic sur le morceau courant |
+| `reservataire` | `BlindTest` | participant qui a gagné le premier clic sur le morceau courant |
 | `version` | `BlindTest` | jeton de verrou optimiste, transporté entre la base et le domaine |
 | `urlAudio` | `Morceau` | adresse du fichier audio, exigée par la section « données de démarrage » |
 
 Deux énumérations accompagnent ces champs : `StatutBlindTest` (`EN_ATTENTE`, `EN_COURS`,
-`TERMINE`) et `EtatLecture` (`LECTURE`, `PAUSE`).
+`TERMINE`) et `EtatLecture` (`LECTURE`, `PAUSE`). `BlindTest` porte aussi les deux constantes
+`NOMBRE_MAXIMUM_DE_PARTICIPANTS` et `NOMBRE_DE_MORCEAUX` : ce sont des données du modèle, et
+les disperser sèmerait des nombres magiques dans trois use cases.
 
 `ParticipationEntity` porte en plus une référence inverse vers `BlindTestEntity` : c'est une
 contrainte de persistance qui reste **dans l'infrastructure**, sans équivalent dans le domaine.
@@ -263,20 +285,30 @@ contrainte de persistance qui reste **dans l'infrastructure**, sans équivalent 
 
 ### Écarts assumés
 
+**Modèles anémiques.** Les quatre modèles n'ont ni identifiant ni méthode, comme dans le projet
+de référence. Conséquence directe : un comportement partagé par deux use cases ne peut plus être
+factorisé sur le modèle, et trois courtes duplications apparaissent — la transition « démarrer »
+dans `RejoindreBlindTestUseCase` et `LancerBlindTestUseCase`, la libération de la main dans
+`MettreEnPauseBlindTestUseCase` et `FaireUnePropositionUseCase`, et la recherche d'une
+participation par email dans trois use cases. C'est le prix assumé de l'alignement.
+
+**Identité par clé naturelle.** Un blind test est désigné par son `nom` (unique en base), comme
+l'enchère l'est par le sien dans la référence (`findByNomEnchere`). Les routes deviennent donc
+`/api/blindtests/{nom}/…` au lieu des `/{id}` de l'énoncé. Les noms contenant des espaces ou des
+accents sont encodés dans l'URL (`Soirée du jeudi` → `Soir%C3%A9e%20du%20jeudi`) ; le parcours a
+été vérifié avec de tels noms.
+
 **Spring et Lombok dans le domaine.** Comme dans le projet de référence, les use cases portent
 `@Component` et les modèles utilisent Lombok (`@Data`, `@NonNull`) et `jakarta.validation`
-(`@Email`, `@Size`). C'est un choix de cohérence avec le code du professeur ; ces deux points
-sont donc volontairement **hors du périmètre** des règles ArchUnit, qui vérifient tout le reste.
-Un domaine strictement pur exigerait d'instancier les use cases par `@Bean` dans une classe de
-configuration de l'infrastructure.
+(`@Email`, `@Size`). Ces deux points sont volontairement **hors du périmètre** des règles
+ArchUnit, qui vérifient tout le reste.
 
 **Mots de passe en clair.** `ParticipantRepository.findByEmailAndMotDePasse` reproduit la
-signature du projet de référence. À ne pas reproduire en production : un hachage BCrypt
-remplacerait cette méthode par `findByEmail` plus une comparaison dans `SeConnecterAdapter`.
+signature du projet de référence. À ne pas reproduire en production.
 
 **`SeDeconnecterAdapter` sans repository.** Le diagramme associe `ParticipantRepository` à
 `SeDeconnecterUseCase`, mais le jeton JWT est sans état : la déconnexion se limite à vider le
-contexte de sécurité et à effacer le cookie. Injecter un repository inutilisé serait du code mort.
+contexte de sécurité et à effacer le cookie.
 
 **`FaireUnePropositionAdapter`.** Le diagramme de classes lui associe `MorceauRepository` ;
 l'adapter ne l'utilise pas, car les sept morceaux appartiennent à l'agrégat `BlindTest` déjà
@@ -284,12 +316,11 @@ rechargé. En revanche il porte `BlindTestRepository`, comme le montre le diagra
 
 **Composition `BlindTest` → `Morceau`.** Le diagramme la note comme une composition ; en base
 c'est une `@ManyToMany` ordonnée (`@OrderColumn`), car le catalogue de morceaux est partagé
-entre tous les blind tests. Chaque blind test conserve donc son propre ordre de passage.
+entre tous les blind tests.
 
 **Spring Boot 4.1.1 plutôt que 3.x.** Le squelette déjà commité et le projet de référence
 utilisent Spring Boot 4.1.1 avec Java 25, ainsi que les artefacts modulaires
-(`spring-boot-starter-webmvc`, `spring-boot-h2console`). Conserver cette version évite un
-dépaysement inutile par rapport au code du professeur.
+(`spring-boot-starter-webmvc`, `spring-boot-h2console`).
 
 ---
 
@@ -300,8 +331,8 @@ dépaysement inutile par rapport au code du professeur.
 - **Recliquer après une mauvaise réponse est autorisé.** La main est libérée, la lecture reprend,
   et tout le monde — y compris l'auteur de l'erreur — peut cliquer à nouveau sur le même morceau.
 - **`POST /lancer` sur un blind test déjà démarré renvoie 409.** Le démarrage nominal est
-  automatique à l'arrivée du troisième participant ; `/lancer` est un déclencheur manuel soumis
-  aux mêmes préconditions.
+  automatique à l'arrivée du troisième participant.
+- **Le nom d'un blind test est unique** et ne peut pas être modifié : c'est sa clé.
 - **Les sept morceaux sont tirés au hasard** dans le catalogue inséré au démarrage, et figés à la
   création du blind test.
 - **Un blind test naît sans participant.** `AjouterBlindTestUseCase.apply(String nom)` ne reçoit
@@ -324,15 +355,20 @@ dépaysement inutile par rapport au code du professeur.
 ./mvnw clean install
 ```
 
-50 tests, tous verts : 45 unitaires (surefire) et 5 d'intégration (failsafe, suffixe `IT`).
+46 tests, tous verts : 41 unitaires (surefire) et 5 d'intégration (failsafe, suffixe `IT`).
 
 | Suite | Ce qu'elle vérifie |
 |---|---|
-| [`BlindTestTest`](src/test/java/com/esgi/blindTest/domain/model/BlindTestTest.java) | **Domaine sans Spring** : refus du 4ᵉ participant, démarrage automatique à 3, exigence des 7 morceaux, point gagné, refus du second clic, reprise après une mauvaise réponse, fin de partie et gel des scores, classement |
-| [`MorceauTest`](src/test/java/com/esgi/blindTest/domain/model/MorceauTest.java) | normalisation des titres : casse, accents, espaces, ligatures |
-| [`*UseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase) | **use cases avec Mockito** : `@Mock` sur l'`OutputPort`, `@InjectMocks` sur le use case — dont le cas où la base refuse la réservation |
+| [`RejoindreBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/RejoindreBlindTestUseCaseTest.java) | refus du 4ᵉ participant, refus du doublon, démarrage automatique au 3ᵉ |
+| [`LancerBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/LancerBlindTestUseCaseTest.java) | démarrage sur le premier morceau, refus à moins de 3 participants, refus d'un second démarrage |
+| [`AjouterBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/AjouterBlindTestUseCaseTest.java) | exigence des 7 morceaux |
+| [`MettreEnPauseBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/MettreEnPauseBlindTestUseCaseTest.java) | premier clic accepté, second refusé, course perdue en base, participant hors partie |
+| [`FaireUnePropositionUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/FaireUnePropositionUseCaseTest.java) | point gagné et morceau suivant, mauvaise réponse qui relance, seul le réservataire répond, fin après le 7ᵉ morceau, et des tests paramétrés sur casse / accents / espaces / ligatures |
 | [`ArchitectureTest`](src/test/java/com/esgi/blindTest/architecture/ArchitectureTest.java) | **ArchUnit**, 10 règles de dépendances entre couches |
 | [`BlindTestRestControllerIT`](src/test/java/com/esgi/blindTest/presentation/controller/rest/BlindTestRestControllerIT.java) | **intégration** : contexte Spring démarré, use cases mockés — 401 sans jeton, liste, création, 409 sur le second clic, 400 sur nom vide |
+
+Tous les tests de règles métier sont des **tests unitaires sans Spring**, avec un `OutputPort`
+mocké par Mockito.
 
 Les règles ArchUnit vérifiées :
 
@@ -351,7 +387,8 @@ Les règles ArchUnit vérifiées :
 
 ## 10. API REST
 
-Toutes les routes sauf l'inscription et la connexion exigent le cookie JWT.
+Toutes les routes sauf l'inscription et la connexion exigent le cookie JWT. `{nom}` est le nom
+du blind test, encodé pour l'URL.
 
 | Méthode | Chemin | Effet |
 |---|---|---|
@@ -360,8 +397,8 @@ Toutes les routes sauf l'inscription et la connexion exigent le cookie JWT.
 | `POST` | `/api/participants/deconnexion` | efface le cookie — `204` |
 | `GET` | `/api/blindtests` | liste les blind tests rejoignables |
 | `POST` | `/api/blindtests` | crée un blind test de 7 morceaux — `201` |
-| `POST` | `/api/blindtests/{id}/rejoindre` | rejoint — `204`, `409` si complet ou déjà inscrit |
-| `POST` | `/api/blindtests/{id}/lancer` | démarre — `204`, `409` si déjà démarré ou incomplet |
-| `POST` | `/api/blindtests/{id}/pause` | clic « J'ai trouvé » — `204` pour le premier, `409` pour les suivants |
-| `POST` | `/api/blindtests/{id}/proposition` | propose un titre — `200 {"juste": …}`, `409` si vous n'avez pas la main |
-| `GET` | `/api/blindtests/{id}/etat` | état complet, interrogé chaque seconde par la salle de jeu |
+| `POST` | `/api/blindtests/{nom}/rejoindre` | rejoint — `204`, `409` si complet ou déjà inscrit |
+| `POST` | `/api/blindtests/{nom}/lancer` | démarre — `204`, `409` si déjà démarré ou incomplet |
+| `POST` | `/api/blindtests/{nom}/pause` | clic « J'ai trouvé » — `204` pour le premier, `409` pour les suivants |
+| `POST` | `/api/blindtests/{nom}/proposition` | propose un titre — `200 {"juste": …}`, `409` si vous n'avez pas la main |
+| `GET` | `/api/blindtests/{nom}/etat` | état complet, interrogé chaque seconde par la salle de jeu |

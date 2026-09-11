@@ -25,7 +25,7 @@ flowchart BT
 
     subgraph infra["infra.persistance"]
         direction TB
-        entity["entity<br/>ParticipantEntity, BlindTestEntity<br/>MorceauEntity, ParticipationEntity"]
+        entity["entity<br/>ParticipantEntity, BlindTestEntity<br/>MorceauEntity, ParticipationEntity<br/>— seules classes porteuses d'un id"]
         jpa["repository<br/>ParticipantJpaRepository, BlindTestJpaRepository<br/>MorceauJpaRepository, ParticipationJpaRepository"]
         init["initialisation<br/>AjoutMorceaux"]
     end
@@ -39,16 +39,16 @@ flowchart BT
 
     subgraph domain["domain"]
         direction TB
-        model["model<br/>Participant, BlindTest, Morceau, Participation"]
-        usecase["usecase<br/>les 10 use cases et leurs OutputPort"]
+        model["model<br/>Participant, BlindTest, Morceau, Participation<br/>— porteurs de données, sans id ni méthode"]
+        usecase["usecase<br/>les 10 use cases : ils appliquent les règles"]
         port["repository<br/>ParticipantRepository, BlindTestRepository<br/>MorceauRepository, ParticipationRepository"]
         exception["exception<br/>les exceptions métier"]
     end
 
     usecase --> model
     usecase --> exception
+    usecase --> port
     port --> model
-    model --> exception
 
     ucAdapter --> usecase
     ucAdapter --> port
@@ -82,7 +82,8 @@ Lecture des trois règles à retenir :
 
 - `domain` n'a **aucune** flèche sortante vers `adapter`, `infra`, `presentation` ou `security`.
 - `entity` (les entités JPA) n'est atteint que depuis `infra` et `adapter.mapper` : aucune entité
-  de persistance ne remonte vers la présentation ni vers le domaine.
+  de persistance ne remonte vers la présentation ni vers le domaine, et **l'identifiant technique
+  ne sort jamais de cette couche**.
 - `presentation` n'a **aucune** flèche vers `infra` : elle passe par les use cases et leurs ports.
 
 Ces trois propriétés sont vérifiées automatiquement par
@@ -92,7 +93,8 @@ Ces trois propriétés sont vérifiées automatiquement par
 
 Le scénario reprend l'interaction modélisée dans Visual Paradigm
 (`UML/projet_blind_test.vpp`, diagramme « Mettre en pause + Faire une proposition »),
-depuis le clic « J'ai trouvé » jusqu'à la réponse.
+depuis l'envoi de la proposition jusqu'à la réponse. Les modèles étant de simples porteurs de
+données, les règles sont appliquées par le use case lui-même.
 
 ```mermaid
 sequenceDiagram
@@ -102,13 +104,12 @@ sequenceDiagram
     participant RC as BlindTestRestController
     participant UC as FaireUnePropositionUseCase
     participant AD as FaireUnePropositionAdapter
-    participant BT as BlindTest (domaine)
     participant BRI as BlindTestRepositoryImpl
     participant PRI as ParticipationRepositoryImpl
     participant JPA as BlindTestJpaRepository
     participant DB as Base de données
 
-    P->>JF: POST /api/blindtests/{id}/proposition
+    P->>JF: POST /api/blindtests/{nom}/proposition
     JF->>JF: lit le cookie HttpOnly, valide le jeton
     JF->>RC: requête authentifiée (principal = Participant)
 
@@ -118,29 +119,25 @@ sequenceDiagram
     AD-->>UC: Participant
 
     UC->>AD: findBlindTest(blindtest)
-    AD->>BRI: findById(id)
-    BRI->>JPA: findById(id)
+    AD->>BRI: findByNom(nom)
+    BRI->>JPA: findByNom(nom)
     JPA->>DB: SELECT blind_test
     DB-->>JPA: row selected
     JPA-->>BRI: BlindTestEntity
     BRI-->>AD: BlindTest (mappé par MapStruct)
     AD-->>UC: BlindTest
 
-    UC->>BT: repondre(participant, proposition)
-    Note over BT: Règles du domaine :<br/>seul le réservataire répond,<br/>comparaison sans casse ni accents,<br/>un point par bonne réponse.
+    Note over UC: Règles appliquées ici :<br/>seul le réservataire répond,<br/>comparaison sans casse ni accents,<br/>un point par bonne réponse.
 
     alt proposition juste
-        BT->>BT: participationDe(participant).ajouterUnPoint()
-        BT->>BT: morceau suivant, ou fin après le 7e
-        BT-->>UC: true
-        UC->>AD: ajouterUnPoint(participation)
-        AD->>PRI: ajouterUnPoint(participation)
+        UC->>UC: score + 1, puis morceau suivant<br/>ou fin après le 7e
+        UC->>AD: ajouterUnPoint(blindTest, participation)
+        AD->>PRI: ajouterUnPoint(nom, participation)
         PRI->>DB: UPDATE participation
         DB-->>PRI: row updated
         PRI-->>AD: Participation
     else proposition fausse
-        BT->>BT: annulerLaReservation() — la lecture reprend
-        BT-->>UC: false
+        UC->>UC: libère la main, la lecture reprend
     end
 
     UC->>AD: save(blindTest)
@@ -160,7 +157,7 @@ sequenceDiagram
 ## 3. Diagramme de séquence — arbitrage du premier clic
 
 Le point délicat : trois participants peuvent cliquer « J'ai trouvé » en même temps.
-La **règle** appartient au domaine, l'**ordre d'arrivée** est arbitré par la base.
+La **règle** est appliquée par le use case, l'**ordre d'arrivée** est arbitré par la base.
 
 ```mermaid
 sequenceDiagram
@@ -169,35 +166,34 @@ sequenceDiagram
     actor B as Bob
     participant RC as BlindTestRestController
     participant UC as MettreEnPauseBlindTestUseCase
-    participant BT as BlindTest (domaine)
     participant BRI as BlindTestRepositoryImpl
     participant DB as Base de données
 
     par Alice clique
-        A->>RC: POST /api/blindtests/{id}/pause
+        A->>RC: POST /api/blindtests/{nom}/pause
         RC->>UC: apply(alice, blindtest)
-        UC->>BT: reserverLaReponse(alice)
-        Note over BT: Règle : statut EN_COURS,<br/>participant inscrit,<br/>aucun réservataire.
+        Note over UC: Règle : statut EN_COURS,<br/>participant inscrit,<br/>aucun réservataire.
+        UC->>UC: passe en PAUSE, réservataire = alice
         UC->>BRI: reserverLaReponse(blindTest)
-        BRI->>DB: UPDATE blind_test SET reservataire = alice<br/>WHERE reservataire IS NULL AND index = n
+        BRI->>DB: UPDATE blind_test SET reservataire_id = alice<br/>WHERE reservataire_id IS NULL AND index = n
         DB-->>BRI: 1 ligne modifiée
         BRI-->>UC: true
         UC-->>RC: succès
         RC-->>A: 204
     and Bob clique au même instant
-        B->>RC: POST /api/blindtests/{id}/pause
+        B->>RC: POST /api/blindtests/{nom}/pause
         RC->>UC: apply(bob, blindtest)
-        UC->>BT: reserverLaReponse(bob)
+        UC->>UC: passe en PAUSE, réservataire = bob
         UC->>BRI: reserverLaReponse(blindTest)
         BRI->>DB: même UPDATE conditionnel
         DB-->>BRI: 0 ligne modifiée
         BRI-->>UC: false
-        UC->>BT: annulerLaReservation()
+        UC->>UC: libère la main
         UC-->>RC: ReponseDejaReserveeException
         RC-->>B: 409 « Un autre participant a déjà pris la main sur ce morceau. »
     end
 ```
 
-La clause `WHERE ... AND id_participant_reservataire IS NULL AND index_morceau_courant = :n`
+La clause `WHERE ... AND reservataire_id IS NULL AND index_morceau_courant = :n`
 est évaluée par la base après le verrou de ligne du premier `UPDATE` : il ne peut donc pas y
 avoir deux gagnants, quel que soit l'entrelacement des requêtes.

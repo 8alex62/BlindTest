@@ -78,14 +78,17 @@ public class BlindTest {
         if (statut == StatutBlindTest.TERMINE) {
             throw new BlindTestTermineException();
         }
-        if (statut != StatutBlindTest.EN_ATTENTE) {
-            throw new BlindTestDejaDemarreException();
-        }
         if (estInscrit(participant)) {
             throw new ParticipantDejaPresentException();
         }
+        // La limite de trois participants est annoncee avant le demarrage : un blind test
+        // en cours est toujours complet, et le message "deja trois participants" est plus
+        // parlant pour celui qui arrive trop tard.
         if (participations.size() >= NOMBRE_MAXIMUM_DE_PARTICIPANTS) {
             throw new BlindTestCompletException();
+        }
+        if (statut != StatutBlindTest.EN_ATTENTE) {
+            throw new BlindTestDejaDemarreException();
         }
         participations.add(new Participation(participant));
         if (estComplet()) {

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion - Blind test</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<nav>
+    <a th:href="@{/inscription}">Inscription</a>
+    <a th:href="@{/blindtests}">Blind tests</a>
+</nav>
+
+<h1>Se connecter</h1>
+
+<form id="formulaire">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required autocomplete="email">
+
+    <label for="motDePasse">Mot de passe</label>
+    <input type="password" id="motDePasse" name="motDePasse" required
+           autocomplete="current-password">
+
+    <button type="submit">Se connecter</button>
+</form>
+
+<p class="message" id="message"></p>
+
+<script th:src="@{/js/commun.js}"></script>
+<script th:src="@{/js/connexion.js}"></script>
+</body>
+</html>

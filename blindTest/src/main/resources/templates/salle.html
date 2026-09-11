@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Salle de jeu - Blind test</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<nav>
+    <a th:href="@{/blindtests}">Retour a la liste</a>
+</nav>
+
+<h1 id="nom">Salle de jeu</h1>
+
+<div class="etat">
+    <div>Statut <strong id="statut">-</strong></div>
+    <div>Morceau <strong id="morceau">-</strong></div>
+    <div>Lecture <strong id="lecture">-</strong></div>
+</div>
+
+<audio id="lecteur" controls preload="none"></audio>
+
+<button type="button" id="trouve">J'ai trouve</button>
+<button type="button" id="rejoindre" class="secondaire">Rejoindre</button>
+
+<form id="proposition-form" hidden>
+    <label for="proposition">Votre proposition</label>
+    <input type="text" id="proposition" name="proposition" required autocomplete="off">
+    <button type="submit">Valider</button>
+</form>
+
+<h2>Scores</h2>
+<ul id="scores"></ul>
+
+<p class="message" id="message"></p>
+
+<script th:inline="javascript">
+    window.ID_BLIND_TEST = [[${id}]];
+</script>
+<script th:src="@{/js/commun.js}"></script>
+<script th:src="@{/js/salle.js}"></script>
+</body>
+</html>

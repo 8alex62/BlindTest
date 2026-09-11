@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Blind tests - Blind test</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<nav>
+    <a th:href="@{/inscription}">Inscription</a>
+    <a th:href="@{/connexion}">Connexion</a>
+    <a href="#" id="deconnexion">Se deconnecter</a>
+</nav>
+
+<h1>Blind tests en cours</h1>
+
+<table>
+    <thead>
+    <tr>
+        <th>Nom</th>
+        <th>Statut</th>
+        <th>Participants</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody id="liste"></tbody>
+</table>
+
+<h2>Creer un blind test</h2>
+
+<form id="formulaire">
+    <label for="nom">Nom</label>
+    <input type="text" id="nom" name="nom" required>
+    <button type="submit">Creer</button>
+</form>
+
+<p class="message" id="message"></p>
+
+<script th:src="@{/js/commun.js}"></script>
+<script th:src="@{/js/blindtests.js}"></script>
+</body>
+</html>

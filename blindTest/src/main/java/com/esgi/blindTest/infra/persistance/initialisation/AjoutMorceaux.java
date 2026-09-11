@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -40,6 +41,8 @@ public class AjoutMorceaux {
     private final CatalogueDeezer catalogueDeezer;
 
     @EventListener(ApplicationReadyEvent.class)
+    // Le catalogue doit exister avant AjoutParticipants et AjoutBlindTest.
+    @Order(1)
     public void init() {
         for (int rang = 0; rang < CATALOGUE.size(); rang++) {
             Choix choix = CATALOGUE.get(rang);

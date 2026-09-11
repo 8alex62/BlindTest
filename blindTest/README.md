@@ -35,8 +35,17 @@ Prérequis : JDK 25. Toutes les dépendances sont téléchargées par le wrapper
 ./mvnw spring-boot:run
 ```
 
-L'application écoute sur `http://localhost:8080`. La base H2 est en mémoire et sept morceaux
-sont insérés au démarrage.
+L'application écoute sur `http://localhost:8080`. La base H2 étant en mémoire, un jeu de
+données de démonstration est inséré à **chaque démarrage**, dans cet ordre :
+
+| Ordre | Classe | Contenu |
+|---|---|---|
+| 1 | `AjoutMorceaux` | sept morceaux, titres et extraits de trente secondes venant de Deezer |
+| 2 | `AjoutParticipants` | deux comptes prêts à l'emploi : `user1@test.fr` et `user2@test.fr`, mot de passe `12345678` |
+| 3 | `AjoutBlindTest` | un blind test « Blind Test n°1 », en attente, déjà pourvu de ses sept morceaux |
+
+L'ordre est explicite (`@Order`) parce que `AjoutBlindTest` consomme le catalogue produit par
+`AjoutMorceaux` : sans cela, l'ordre d'appel des écouteurs d'événement ne serait pas garanti.
 
 | Page | Rôle |
 |---|---|
@@ -45,8 +54,10 @@ sont insérés au démarrage.
 | `/blindtests` | lister et créer des blind tests |
 | `/blindtests/{nom}` | salle de jeu : lecteur audio, boutons « Rejoindre », « Lancer le blind test » et « J'ai trouvé », scores |
 
-Pour jouer une partie complète il faut **trois comptes** : ouvrez trois fenêtres de navigation
-privée, inscrivez et connectez un participant dans chacune, puis rejoignez le même blind test.
+Pour jouer une partie complète il faut **trois comptes**. Deux sont déjà créés
+(`user1@test.fr` et `user2@test.fr`, mot de passe `12345678`) : il ne reste qu'à en inscrire un
+troisième. Ouvrez trois fenêtres de navigation privée, connectez un participant dans chacune,
+puis rejoignez « Blind Test n°1 », qui vous attend déjà dans la liste.
 Une fois les trois réunis, l'un d'eux clique sur « Lancer le blind test » : **le démarrage n'est
 jamais automatique**. Le bouton « Rejoindre » disparaît dès que vous participez, et
 « Lancer le blind test » reste désactivé tant que les trois participants ne sont pas là.

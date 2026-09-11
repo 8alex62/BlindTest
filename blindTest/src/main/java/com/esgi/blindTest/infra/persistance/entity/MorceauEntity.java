@@ -23,7 +23,8 @@ public class MorceauEntity {
     @Column(unique = true, nullable = false)
     private String nom;
 
-    @Column(name = "url_audio")
+    // Les URL signees des fournisseurs depassent largement les 255 caracteres par defaut.
+    @Column(name = "url_audio", length = 1000)
     private String urlAudio;
 
     public MorceauEntity(String nom, String urlAudio) {

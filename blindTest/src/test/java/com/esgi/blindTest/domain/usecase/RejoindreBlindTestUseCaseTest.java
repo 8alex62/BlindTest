@@ -56,7 +56,7 @@ class RejoindreBlindTestUseCaseTest {
     }
 
     @Test
-    void demarre_automatiquement_au_troisieme_participant() {
+    void ne_demarre_pas_a_larrivee_du_troisieme_participant() {
         BlindTest blindTest = blindTestEnAttente();
         blindTest.getParticipations().add(new Participation(participant("bob@esgi.fr")));
         blindTest.getParticipations().add(new Participation(participant("carole@esgi.fr")));
@@ -67,10 +67,10 @@ class RejoindreBlindTestUseCaseTest {
 
         rejoindreBlindTestUseCase.apply(alice, blindTest);
 
-        assertEquals(StatutBlindTest.EN_COURS, blindTest.getStatut());
-        assertEquals(EtatLecture.LECTURE, blindTest.getEtatLecture());
-        assertEquals(0, blindTest.getIndexMorceauCourant());
-        assertEquals("Morceau 1", blindTest.getMorceaux().get(0).getNom());
+        // Le blind test est complet, mais il attend qu'un participant le lance.
+        assertEquals(3, blindTest.getParticipations().size());
+        assertEquals(StatutBlindTest.EN_ATTENTE, blindTest.getStatut());
+        assertEquals(EtatLecture.PAUSE, blindTest.getEtatLecture());
     }
 
     @Test

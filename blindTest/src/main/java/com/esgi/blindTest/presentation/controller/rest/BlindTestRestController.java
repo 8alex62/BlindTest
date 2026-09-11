@@ -64,10 +64,15 @@ public class BlindTestRestController {
         rejoindreBlindTestUseCase.apply(participant, reference(nom));
     }
 
+    /**
+     * Clic sur "Lancer le blind test" : le demarrage n'est jamais automatique,
+     * et seul un participant inscrit peut le declencher.
+     */
     @PostMapping("/{nom}/lancer")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void postLancer(@PathVariable String nom) {
-        lancerBlindTestUseCase.apply(reference(nom));
+    public void postLancer(@PathVariable String nom,
+                           @AuthenticationPrincipal Participant participant) {
+        lancerBlindTestUseCase.apply(participant, reference(nom));
     }
 
     /**

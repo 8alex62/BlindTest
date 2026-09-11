@@ -44,11 +44,20 @@ public interface BlindTestMapper {
                 blindTest.getEtatLecture(),
                 Math.min(blindTest.getIndexMorceauCourant() + 1, BlindTest.NOMBRE_DE_MORCEAUX),
                 BlindTest.NOMBRE_DE_MORCEAUX,
+                BlindTest.NOMBRE_MAXIMUM_DE_PARTICIPANTS,
                 morceauCourant == null ? null : morceauCourant.getUrlAudio(),
+                // Sert a masquer le bouton "Rejoindre" et a montrer "Lancer le blind test".
+                estInscrit(blindTest, participant),
                 reservataire != null,
-                reservataire != null && participant != null
+                participant != null && reservataire != null
                         && reservataire.getEmail().equals(participant.getEmail()),
                 classement(blindTest));
+    }
+
+    private boolean estInscrit(BlindTest blindTest, Participant participant) {
+        return participant != null && blindTest.getParticipations().stream()
+                .anyMatch(participation -> participation.getParticipant().getEmail()
+                        .equals(participant.getEmail()));
     }
 
     private Morceau morceauCourant(BlindTest blindTest) {

@@ -5,7 +5,6 @@ import com.esgi.blindTest.domain.exception.BlindTestDejaDemarreException;
 import com.esgi.blindTest.domain.exception.BlindTestTermineException;
 import com.esgi.blindTest.domain.exception.ParticipantDejaPresentException;
 import com.esgi.blindTest.domain.model.BlindTest;
-import com.esgi.blindTest.domain.model.EtatLecture;
 import com.esgi.blindTest.domain.model.Participant;
 import com.esgi.blindTest.domain.model.Participation;
 import com.esgi.blindTest.domain.model.StatutBlindTest;
@@ -51,15 +50,8 @@ public class RejoindreBlindTestUseCase {
         Participation participation = new Participation(inscrit);
         courant.getParticipations().add(participation);
 
-        // Regle metier : le blind test demarre des qu'il atteint trois participants,
-        // et le premier morceau est joue.
-        if (courant.getParticipations().size() == BlindTest.NOMBRE_MAXIMUM_DE_PARTICIPANTS) {
-            courant.setStatut(StatutBlindTest.EN_COURS);
-            courant.setIndexMorceauCourant(0);
-            courant.setEtatLecture(EtatLecture.LECTURE);
-            courant.setReservataire(null);
-        }
-
+        // Le blind test ne demarre pas tout seul : un participant doit le lancer,
+        // via LancerBlindTestUseCase.
         output.save(courant);
         output.enregistrerLaParticipation(courant, participation);
     }

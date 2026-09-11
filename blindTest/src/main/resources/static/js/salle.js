@@ -1,6 +1,9 @@
 // Le blind test est designe par son nom : il faut encoder les espaces et accents.
 const base = '/api/blindtests/' + encodeURIComponent(window.NOM_BLIND_TEST);
 const lecteur = document.getElementById('lecteur');
+const boutonRejoindre = document.getElementById('rejoindre');
+const boutonLancer = document.getElementById('lancer');
+const boutonTrouve = document.getElementById('trouve');
 let urlCourante = null;
 
 async function rafraichir() {
@@ -34,20 +37,39 @@ async function rafraichir() {
         lecteur.pause();
     }
 
-    document.getElementById('trouve').disabled =
-        etat.statut !== 'EN_COURS' || etat.reponseReservee;
-    document.getElementById('rejoindre').hidden = etat.statut !== 'EN_ATTENTE';
+    const enAttente = etat.statut === 'EN_ATTENTE';
+    const participants = etat.scores.length;
+    const complet = participants >= etat.nombreMaximumDeParticipants;
+
+    // On ne propose de rejoindre qu'a qui ne participe pas encore.
+    boutonRejoindre.hidden = !enAttente || etat.vousParticipez;
+
+    // Le blind test ne demarre jamais tout seul : un participant doit le lancer.
+    boutonLancer.hidden = !enAttente || !etat.vousParticipez;
+    boutonLancer.disabled = !complet;
+    boutonLancer.textContent = complet
+        ? 'Lancer le blind test'
+        : 'Lancer (' + participants + ' / ' + etat.nombreMaximumDeParticipants + ')';
+
+    boutonTrouve.disabled = etat.statut !== 'EN_COURS' || etat.reponseReservee;
     document.getElementById('proposition-form').hidden = !etat.vousAvezLaMain;
 }
 
-document.getElementById('rejoindre').addEventListener('click', async function () {
+boutonRejoindre.addEventListener('click', async function () {
     const resultat = await envoyer(base + '/rejoindre');
     afficherMessage(resultat.ok ? 'Vous avez rejoint ce blind test.'
         : (resultat.donnees ? resultat.donnees.message : 'Impossible de rejoindre.'), !resultat.ok);
     rafraichir();
 });
 
-document.getElementById('trouve').addEventListener('click', async function () {
+boutonLancer.addEventListener('click', async function () {
+    const resultat = await envoyer(base + '/lancer');
+    afficherMessage(resultat.ok ? 'Le blind test est lance.'
+        : (resultat.donnees ? resultat.donnees.message : 'Impossible de lancer.'), !resultat.ok);
+    rafraichir();
+});
+
+boutonTrouve.addEventListener('click', async function () {
     const resultat = await envoyer(base + '/pause');
     afficherMessage(resultat.ok ? 'Vous avez la main, proposez un titre.'
         : (resultat.donnees ? resultat.donnees.message : 'Trop tard.'), !resultat.ok);

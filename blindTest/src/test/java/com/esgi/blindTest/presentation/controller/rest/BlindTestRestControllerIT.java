@@ -1,9 +1,11 @@
 package com.esgi.blindTest.presentation.controller.rest;
 
+import com.esgi.blindTest.domain.exception.ParticipantHorsBlindTestException;
 import com.esgi.blindTest.domain.exception.ReponseDejaReserveeException;
 import com.esgi.blindTest.domain.model.BlindTest;
 import com.esgi.blindTest.domain.usecase.AjouterBlindTestUseCase;
 import com.esgi.blindTest.domain.usecase.ConsulterBlindTestUseCase;
+import com.esgi.blindTest.domain.usecase.LancerBlindTestUseCase;
 import com.esgi.blindTest.domain.usecase.MettreEnPauseBlindTestUseCase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +41,9 @@ class BlindTestRestControllerIT {
 
     @MockitoBean
     MettreEnPauseBlindTestUseCase mettreEnPauseBlindTestUseCase;
+
+    @MockitoBean
+    LancerBlindTestUseCase lancerBlindTestUseCase;
 
     @Autowired
     MockMvc mockMvc;
@@ -82,6 +87,17 @@ class BlindTestRestControllerIT {
         // l'espace soit encode une seule fois.
         mockMvc.perform(MockMvcRequestBuilders.post("/api/blindtests/{nom}/pause", "Soiree ESGI"))
                 .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").isNotEmpty());
+    }
+
+    @Test
+    @WithMockUser
+    void refuse_le_lancement_par_un_non_participant() throws Exception {
+        doThrow(new ParticipantHorsBlindTestException())
+                .when(lancerBlindTestUseCase).apply(any(), any());
+
+        mockMvc.perform(MockMvcRequestBuilders.post("/api/blindtests/{nom}/lancer", "Soiree ESGI"))
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").isNotEmpty());
     }
 

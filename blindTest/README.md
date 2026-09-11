@@ -43,11 +43,13 @@ sont insérés au démarrage.
 | `/inscription` | créer un compte |
 | `/connexion` | se connecter (dépose le jeton JWT dans un cookie `HttpOnly`) |
 | `/blindtests` | lister et créer des blind tests |
-| `/blindtests/{nom}` | salle de jeu : lecteur audio, bouton « J'ai trouvé », scores |
+| `/blindtests/{nom}` | salle de jeu : lecteur audio, boutons « Rejoindre », « Lancer le blind test » et « J'ai trouvé », scores |
 
 Pour jouer une partie complète il faut **trois comptes** : ouvrez trois fenêtres de navigation
 privée, inscrivez et connectez un participant dans chacune, puis rejoignez le même blind test.
-La partie démarre toute seule à l'arrivée du troisième.
+Une fois les trois réunis, l'un d'eux clique sur « Lancer le blind test » : **le démarrage n'est
+jamais automatique**. Le bouton « Rejoindre » disparaît dès que vous participez, et
+« Lancer le blind test » reste désactivé tant que les trois participants ne sont pas là.
 
 La console H2 est disponible sur `/h2-console` (URL JDBC `jdbc:h2:mem:blindtest`).
 
@@ -189,8 +191,10 @@ cases**, dans le package `domain` : jamais par un service, un adapter ou un cont
 | Un blind test est une séquence de 7 morceaux | `AjouterBlindTestUseCase` | `NombreDeMorceauxInvalideException` |
 | Au maximum 3 participants | `RejoindreBlindTestUseCase` | `BlindTestCompletException` |
 | Un participant ne rejoint qu'une fois | `RejoindreBlindTestUseCase` | `ParticipantDejaPresentException` |
-| Le blind test démarre à 3 participants | `RejoindreBlindTestUseCase` | — |
-| Au démarrage, le premier morceau est joué | `RejoindreBlindTestUseCase`, `LancerBlindTestUseCase` | `BlindTestIncompletException`, `BlindTestDejaDemarreException` |
+| Le démarrage résulte d'une action, jamais du remplissage | `LancerBlindTestUseCase` | `BlindTestDejaDemarreException` |
+| Seul un participant inscrit peut lancer la partie | `LancerBlindTestUseCase` | `ParticipantHorsBlindTestException` |
+| Le démarrage exige 3 participants et 7 morceaux | `LancerBlindTestUseCase` | `BlindTestIncompletException`, `NombreDeMorceauxInvalideException` |
+| Au démarrage, le premier morceau est joué | `LancerBlindTestUseCase` | — |
 | Le premier clic met en pause et réserve la réponse | `MettreEnPauseBlindTestUseCase` | `BlindTestNonDemarreException`, `ParticipantHorsBlindTestException` |
 | Un seul réservataire à la fois | `MettreEnPauseBlindTestUseCase` | `ReponseDejaReserveeException` |
 | Seul le réservataire peut répondre | `FaireUnePropositionUseCase` | `ReponseNonReserveeException` |
@@ -287,10 +291,17 @@ contrainte de persistance qui reste **dans l'infrastructure**, sans équivalent 
 
 **Modèles anémiques.** Les quatre modèles n'ont ni identifiant ni méthode, comme dans le projet
 de référence. Conséquence directe : un comportement partagé par deux use cases ne peut plus être
-factorisé sur le modèle, et trois courtes duplications apparaissent — la transition « démarrer »
-dans `RejoindreBlindTestUseCase` et `LancerBlindTestUseCase`, la libération de la main dans
+factorisé sur le modèle, et deux courtes duplications subsistent — la libération de la main dans
 `MettreEnPauseBlindTestUseCase` et `FaireUnePropositionUseCase`, et la recherche d'une
-participation par email dans trois use cases. C'est le prix assumé de l'alignement.
+participation par email dans trois use cases. C'est le prix assumé de l'alignement. La troisième,
+la transition « démarrer », a disparu en même temps que le démarrage automatique : elle n'existe
+plus que dans `LancerBlindTestUseCase`.
+
+**`LancerBlindTestUseCase.apply(Participant, BlindTest)`.** Le diagramme de classes impose
+`apply(BlindTest)`. Contrôler que seul un participant inscrit peut lancer la partie exige de
+connaître l'appelant : le principal issu du `JwtFilter` porte l'email, et la comparaison se fait
+dessus. Aucun appel supplémentaire au `ParticipantRepository`, les dépendances de l'adapter
+restent donc celles du diagramme.
 
 **Identité par clé naturelle.** Un blind test est désigné par son `nom` (unique en base), comme
 l'enchère l'est par le sien dans la référence (`findByNomEnchere`). Les routes deviennent donc
@@ -330,8 +341,9 @@ utilisent Spring Boot 4.1.1 avec Java 25, ainsi que les artefacts modulaires
   déjà démarrées rendrait la liste inutile, puisque aucune ne serait rejoignable.
 - **Recliquer après une mauvaise réponse est autorisé.** La main est libérée, la lecture reprend,
   et tout le monde — y compris l'auteur de l'erreur — peut cliquer à nouveau sur le même morceau.
-- **`POST /lancer` sur un blind test déjà démarré renvoie 409.** Le démarrage nominal est
-  automatique à l'arrivée du troisième participant.
+- **Le blind test ne démarre jamais tout seul.** Réunir trois participants le rend seulement
+  lançable ; il faut qu'un **participant inscrit** clique sur « Lancer le blind test ». Un tiers
+  qui tente `POST /lancer` reçoit un 403, et un second lancement un 409.
 - **Le nom d'un blind test est unique** et ne peut pas être modifié : c'est sa clé.
 - **Les sept morceaux sont tirés au hasard** dans le catalogue inséré au démarrage, et figés à la
   création du blind test.
@@ -342,9 +354,19 @@ utilisent Spring Boot 4.1.1 avec Java 25, ainsi que les artefacts modulaires
 - **Le titre du morceau courant n'est jamais publié** par `/etat` : c'est la réponse à trouver.
 - **Déconnexion sans révocation.** Le cookie est effacé, mais le jeton reste valide jusqu'à son
   expiration (deux heures par défaut).
-- **Les adresses audio sont des fichiers de démonstration libres** (SoundHelix), sans rapport
-  avec les titres à deviner. Elles se remplacent par des fichiers locaux placés sous
-  `src/main/resources/static/audio/`.
+- **Les morceaux viennent de l'API publique de Deezer**, qui expose pour chaque piste un extrait
+  de trente secondes au format MP3 : le blind test porte donc sur de vrais titres connus. Si
+  l'API est injoignable, ou si `app.catalogue.deezer.actif=false`, le catalogue retombe sur des
+  fichiers de démonstration (SoundHelix) sans rapport avec les titres — il compte dans tous les
+  cas sept morceaux.
+- **Les liens d'extrait Deezer sont signés et ne valent que quinze minutes** ; l'URL privée de sa
+  signature renvoie 403. Comme la base H2 est en mémoire, le catalogue est reconstruit à chaque
+  démarrage : il suffit de **relancer l'application avant une démonstration**. Au-delà d'un quart
+  d'heure de fonctionnement, l'audio peut cesser de se charger — limite assumée, le contournement
+  (résoudre le lien à la demande derrière un endpoint de redirection) n'a pas été retenu.
+- **YouTube a été écarté comme source.** La seule voie sanctionnée est l'API IFrame Player, or le
+  lecteur affiche le titre de la vidéo — c'est-à-dire la réponse — et les conditions
+  d'utilisation interdisent aussi bien de masquer le lecteur que de séparer l'audio de la vidéo.
 - **Pas de départage en cas d'égalité** de scores.
 
 ---
@@ -355,17 +377,18 @@ utilisent Spring Boot 4.1.1 avec Java 25, ainsi que les artefacts modulaires
 ./mvnw clean install
 ```
 
-46 tests, tous verts : 41 unitaires (surefire) et 5 d'intégration (failsafe, suffixe `IT`).
+51 tests, tous verts : 45 unitaires (surefire) et 6 d'intégration (failsafe, suffixe `IT`).
 
 | Suite | Ce qu'elle vérifie |
 |---|---|
-| [`RejoindreBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/RejoindreBlindTestUseCaseTest.java) | refus du 4ᵉ participant, refus du doublon, démarrage automatique au 3ᵉ |
-| [`LancerBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/LancerBlindTestUseCaseTest.java) | démarrage sur le premier morceau, refus à moins de 3 participants, refus d'un second démarrage |
+| [`RejoindreBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/RejoindreBlindTestUseCaseTest.java) | refus du 4ᵉ participant, refus du doublon, et **absence de démarrage** à l'arrivée du 3ᵉ |
+| [`LancerBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/LancerBlindTestUseCaseTest.java) | démarrage sur le premier morceau, refus à moins de 3 participants, refus d'un participant qui ne joue pas, refus d'un second démarrage |
 | [`AjouterBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/AjouterBlindTestUseCaseTest.java) | exigence des 7 morceaux |
 | [`MettreEnPauseBlindTestUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/MettreEnPauseBlindTestUseCaseTest.java) | premier clic accepté, second refusé, course perdue en base, participant hors partie |
 | [`FaireUnePropositionUseCaseTest`](src/test/java/com/esgi/blindTest/domain/usecase/FaireUnePropositionUseCaseTest.java) | point gagné et morceau suivant, mauvaise réponse qui relance, seul le réservataire répond, fin après le 7ᵉ morceau, et des tests paramétrés sur casse / accents / espaces / ligatures |
+| [`AjoutMorceauxTest`](src/test/java/com/esgi/blindTest/infra/persistance/initialisation/AjoutMorceauxTest.java) | le catalogue compte toujours 7 morceaux, que Deezer réponde ou non, et n'est pas réinséré s'il existe déjà |
 | [`ArchitectureTest`](src/test/java/com/esgi/blindTest/architecture/ArchitectureTest.java) | **ArchUnit**, 10 règles de dépendances entre couches |
-| [`BlindTestRestControllerIT`](src/test/java/com/esgi/blindTest/presentation/controller/rest/BlindTestRestControllerIT.java) | **intégration** : contexte Spring démarré, use cases mockés — 401 sans jeton, liste, création, 409 sur le second clic, 400 sur nom vide |
+| [`BlindTestRestControllerIT`](src/test/java/com/esgi/blindTest/presentation/controller/rest/BlindTestRestControllerIT.java) | **intégration** : contexte Spring démarré, use cases mockés — 401 sans jeton, liste, création, 409 sur le second clic, 403 sur un lancement par un non-participant, 400 sur nom vide |
 
 Tous les tests de règles métier sont des **tests unitaires sans Spring**, avec un `OutputPort`
 mocké par Mockito.
@@ -398,7 +421,7 @@ du blind test, encodé pour l'URL.
 | `GET` | `/api/blindtests` | liste les blind tests rejoignables |
 | `POST` | `/api/blindtests` | crée un blind test de 7 morceaux — `201` |
 | `POST` | `/api/blindtests/{nom}/rejoindre` | rejoint — `204`, `409` si complet ou déjà inscrit |
-| `POST` | `/api/blindtests/{nom}/lancer` | démarre — `204`, `409` si déjà démarré ou incomplet |
+| `POST` | `/api/blindtests/{nom}/lancer` | démarre la partie — `204`, `403` si vous n'y participez pas, `409` si déjà démarrée ou incomplète |
 | `POST` | `/api/blindtests/{nom}/pause` | clic « J'ai trouvé » — `204` pour le premier, `409` pour les suivants |
 | `POST` | `/api/blindtests/{nom}/proposition` | propose un titre — `200 {"juste": …}`, `409` si vous n'avez pas la main |
 | `GET` | `/api/blindtests/{nom}/etat` | état complet, interrogé chaque seconde par la salle de jeu |

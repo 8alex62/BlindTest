@@ -7,5 +7,7 @@ import com.esgi.blindTest.domain.model.Participation;
  */
 public interface ParticipationRepository {
 
+    Participation enregistrer(Long idBlindTest, Participation participation);
+
     Participation ajouterUnPoint(Participation participation);
 }

@@ -29,6 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * Un blind test est designe par son nom : les modeles du domaine n'ont pas d'identifiant.
+ */
 @RestController
 @RequestMapping("/api/blindtests")
 @AllArgsConstructor
@@ -54,51 +57,50 @@ public class BlindTestRestController {
         return blindTestMapper.toDto(ajouterBlindTestUseCase.apply(requete.nom()));
     }
 
-    @PostMapping("/{id}/rejoindre")
+    @PostMapping("/{nom}/rejoindre")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void postRejoindre(@PathVariable Long id,
+    public void postRejoindre(@PathVariable String nom,
                               @AuthenticationPrincipal Participant participant) {
-        rejoindreBlindTestUseCase.apply(participant, reference(id));
+        rejoindreBlindTestUseCase.apply(participant, reference(nom));
     }
 
-    @PostMapping("/{id}/lancer")
+    @PostMapping("/{nom}/lancer")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void postLancer(@PathVariable Long id) {
-        lancerBlindTestUseCase.apply(reference(id));
+    public void postLancer(@PathVariable String nom) {
+        lancerBlindTestUseCase.apply(reference(nom));
     }
 
     /**
      * Clic sur "J'ai trouve". L'arbitrage du premier clic est entierement cote serveur :
-    * le controleur ne porte aucune regle.
+     * le controleur ne porte aucune regle.
      */
-    @PostMapping("/{id}/pause")
+    @PostMapping("/{nom}/pause")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void postPause(@PathVariable Long id,
+    public void postPause(@PathVariable String nom,
                           @AuthenticationPrincipal Participant participant) {
-        mettreEnPauseBlindTestUseCase.apply(participant, reference(id));
+        mettreEnPauseBlindTestUseCase.apply(participant, reference(nom));
     }
 
-    @PostMapping("/{id}/proposition")
-    public PropositionResponse postProposition(@PathVariable Long id,
+    @PostMapping("/{nom}/proposition")
+    public PropositionResponse postProposition(@PathVariable String nom,
                                                @AuthenticationPrincipal Participant participant,
                                                @RequestBody @Valid PropositionRequest requete) {
         return new PropositionResponse(
-                faireUnePropositionUseCase.apply(reference(id), participant, requete.proposition()));
+                faireUnePropositionUseCase.apply(reference(nom), participant, requete.proposition()));
     }
 
-    @GetMapping("/{id}/etat")
-    public EtatBlindTestResponse getEtat(@PathVariable Long id,
+    @GetMapping("/{nom}/etat")
+    public EtatBlindTestResponse getEtat(@PathVariable String nom,
                                          @AuthenticationPrincipal Participant participant) {
-        return blindTestMapper.toEtatDto(consulterEtatBlindTestUseCase.apply(reference(id)), participant);
+        return blindTestMapper.toEtatDto(
+                consulterEtatBlindTestUseCase.apply(reference(nom)), participant);
     }
 
     /**
-     * Le controleur ne connait que l'identifiant : l'adapter du use case recharge
+     * Le controleur ne connait que le nom : l'adapter du use case recharge
      * le blind test complet depuis son port.
      */
-    private BlindTest reference(Long id) {
-        BlindTest blindTest = new BlindTest();
-        blindTest.setId(id);
-        return blindTest;
+    private BlindTest reference(String nom) {
+        return new BlindTest(nom);
     }
 }

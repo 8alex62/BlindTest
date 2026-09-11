@@ -11,7 +11,8 @@ async function rafraichir() {
             + '<td>' + blindTest.statut + '</td>'
             + '<td>' + blindTest.nombreDeParticipants + ' / '
             + blindTest.nombreMaximumDeParticipants + '</td>'
-            + '<td><a href="/blindtests/' + blindTest.id + '">Ouvrir</a></td>'
+            + '<td><a href="/blindtests/' + encodeURIComponent(blindTest.nom)
+            + '">Ouvrir</a></td>'
             + '</tr>';
     });
     document.getElementById('liste').innerHTML =

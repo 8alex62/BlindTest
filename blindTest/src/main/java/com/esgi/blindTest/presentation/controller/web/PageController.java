@@ -32,9 +32,9 @@ public class PageController {
         return "blindtests";
     }
 
-    @GetMapping("/blindtests/{id}")
-    public String salle(@PathVariable Long id, Model model) {
-        model.addAttribute("id", id);
+    @GetMapping("/blindtests/{nom}")
+    public String salle(@PathVariable String nom, Model model) {
+        model.addAttribute("nom", nom);
         return "salle";
     }
 }

@@ -1,6 +1,8 @@
 package com.esgi.blindTest.adapter.repository;
 
 import com.esgi.blindTest.adapter.mapper.ParticipationEntityMapper;
+import com.esgi.blindTest.domain.exception.BlindTestIntrouvableException;
+import com.esgi.blindTest.domain.exception.ParticipantIntrouvableException;
 import com.esgi.blindTest.domain.exception.ParticipationIntrouvableException;
 import com.esgi.blindTest.domain.model.Participation;
 import com.esgi.blindTest.domain.repository.ParticipationRepository;
@@ -23,19 +25,23 @@ public class ParticipationRepositoryImpl implements ParticipationRepository {
 
     @Override
     @Transactional
-    public Participation enregistrer(Long idBlindTest, Participation participation) {
+    public Participation enregistrer(String nomBlindTest, Participation participation) {
         ParticipationEntity entity = new ParticipationEntity();
-        entity.setBlindTest(blindTestJpaRepository.getReferenceById(idBlindTest));
-        entity.setParticipant(
-                participantJpaRepository.getReferenceById(participation.getParticipant().getId()));
+        entity.setBlindTest(blindTestJpaRepository.findByNom(nomBlindTest)
+                .orElseThrow(BlindTestIntrouvableException::new));
+        entity.setParticipant(participantJpaRepository
+                .findByEmail(participation.getParticipant().getEmail())
+                .orElseThrow(ParticipantIntrouvableException::new));
         entity.setScore(participation.getScore());
         return participationEntityMapper.toEntity(participationJpaRepository.save(entity));
     }
 
     @Override
     @Transactional
-    public Participation ajouterUnPoint(Participation participation) {
-        ParticipationEntity entity = participationJpaRepository.findById(participation.getId())
+    public Participation ajouterUnPoint(String nomBlindTest, Participation participation) {
+        ParticipationEntity entity = participationJpaRepository
+                .findByBlindTestNomAndParticipantEmail(
+                        nomBlindTest, participation.getParticipant().getEmail())
                 .orElseThrow(ParticipationIntrouvableException::new);
         entity.setScore(participation.getScore());
         return participationEntityMapper.toEntity(participationJpaRepository.save(entity));

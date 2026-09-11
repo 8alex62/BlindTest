@@ -1,9 +1,10 @@
-const identifiant = window.ID_BLIND_TEST;
+// Le blind test est designe par son nom : il faut encoder les espaces et accents.
+const base = '/api/blindtests/' + encodeURIComponent(window.NOM_BLIND_TEST);
 const lecteur = document.getElementById('lecteur');
 let urlCourante = null;
 
 async function rafraichir() {
-    const reponse = await fetch('/api/blindtests/' + identifiant + '/etat');
+    const reponse = await fetch(base + '/etat');
     if (reponse.status === 401) {
         window.location.href = '/connexion';
         return;
@@ -40,14 +41,14 @@ async function rafraichir() {
 }
 
 document.getElementById('rejoindre').addEventListener('click', async function () {
-    const resultat = await envoyer('/api/blindtests/' + identifiant + '/rejoindre');
+    const resultat = await envoyer(base + '/rejoindre');
     afficherMessage(resultat.ok ? 'Vous avez rejoint ce blind test.'
         : (resultat.donnees ? resultat.donnees.message : 'Impossible de rejoindre.'), !resultat.ok);
     rafraichir();
 });
 
 document.getElementById('trouve').addEventListener('click', async function () {
-    const resultat = await envoyer('/api/blindtests/' + identifiant + '/pause');
+    const resultat = await envoyer(base + '/pause');
     afficherMessage(resultat.ok ? 'Vous avez la main, proposez un titre.'
         : (resultat.donnees ? resultat.donnees.message : 'Trop tard.'), !resultat.ok);
     rafraichir();
@@ -56,8 +57,7 @@ document.getElementById('trouve').addEventListener('click', async function () {
 document.getElementById('proposition-form').addEventListener('submit', async function (evenement) {
     evenement.preventDefault();
     const champ = document.getElementById('proposition');
-    const resultat = await envoyer('/api/blindtests/' + identifiant + '/proposition',
-        {proposition: champ.value});
+    const resultat = await envoyer(base + '/proposition', {proposition: champ.value});
     if (resultat.ok) {
         afficherMessage(resultat.donnees.juste ? 'Bonne reponse, un point de plus.'
             : 'Raté, la lecture reprend pour tout le monde.', !resultat.donnees.juste);

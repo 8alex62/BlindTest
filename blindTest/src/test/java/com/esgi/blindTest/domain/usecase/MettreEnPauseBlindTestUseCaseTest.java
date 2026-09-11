@@ -1,9 +1,9 @@
 package com.esgi.blindTest.domain.usecase;
 
+import com.esgi.blindTest.domain.exception.ParticipantHorsBlindTestException;
 import com.esgi.blindTest.domain.exception.ReponseDejaReserveeException;
 import com.esgi.blindTest.domain.model.BlindTest;
 import com.esgi.blindTest.domain.model.EtatLecture;
-import com.esgi.blindTest.domain.model.Morceau;
 import com.esgi.blindTest.domain.model.Participant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,8 +11,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import java.util.stream.IntStream;
-
+import static com.esgi.blindTest.domain.usecase.FaireUnePropositionUseCaseTest.blindTestEnCours;
+import static com.esgi.blindTest.domain.usecase.RejoindreBlindTestUseCaseTest.participant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,19 +33,33 @@ class MettreEnPauseBlindTestUseCaseTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        alice = participant(1L, "alice@esgi.fr");
-        blindTest = blindTestEnCours(alice);
+        alice = participant("alice@esgi.fr");
+        blindTest = blindTestEnCours("Morceau 1");
     }
 
     @Test
-    void reserve_la_reponse_quand_la_base_accorde_la_main() {
+    void le_premier_clic_met_en_pause_et_reserve_la_reponse() {
         when(output.findBlindTest(any())).thenReturn(blindTest);
         when(output.reserverLaReponse(any())).thenReturn(true);
 
         mettreEnPauseBlindTestUseCase.apply(alice, blindTest);
 
         assertEquals(EtatLecture.PAUSE, blindTest.getEtatLecture());
-        assertEquals(alice.getId(), blindTest.getIdParticipantReservataire());
+        assertEquals(alice.getEmail(), blindTest.getReservataire().getEmail());
+    }
+
+    @Test
+    void refuse_le_second_clic_sur_le_meme_morceau() {
+        blindTest.setReservataire(participant("bob@esgi.fr"));
+        blindTest.setEtatLecture(EtatLecture.PAUSE);
+        when(output.findBlindTest(any())).thenReturn(blindTest);
+
+        ReponseDejaReserveeException erreur = assertThrows(ReponseDejaReserveeException.class,
+                () -> mettreEnPauseBlindTestUseCase.apply(alice, blindTest));
+
+        assertEquals("bob@esgi.fr", blindTest.getReservataire().getEmail());
+        assertEquals("Un autre participant a déjà pris la main sur ce morceau.",
+                erreur.getMessage());
     }
 
     @Test
@@ -56,26 +70,15 @@ class MettreEnPauseBlindTestUseCaseTest {
 
         assertThrows(ReponseDejaReserveeException.class,
                 () -> mettreEnPauseBlindTestUseCase.apply(alice, blindTest));
-        assertNull(blindTest.getIdParticipantReservataire());
+        assertNull(blindTest.getReservataire());
+        assertEquals(EtatLecture.LECTURE, blindTest.getEtatLecture());
     }
 
-    private static BlindTest blindTestEnCours(Participant... participants) {
-        BlindTest blindTest = new BlindTest("Soiree ESGI");
-        blindTest.setId(1L);
-        blindTest.ajouterLesMorceaux(IntStream.rangeClosed(1, BlindTest.NOMBRE_DE_MORCEAUX)
-                .mapToObj(numero -> new Morceau("Morceau " + numero))
-                .toList());
-        for (Participant participant : participants) {
-            blindTest.rejoindre(participant);
-        }
-        blindTest.rejoindre(participant(98L, "bob@esgi.fr"));
-        blindTest.rejoindre(participant(99L, "carole@esgi.fr"));
-        return blindTest;
-    }
+    @Test
+    void refuse_un_participant_qui_ne_joue_pas() {
+        when(output.findBlindTest(any())).thenReturn(blindTest);
 
-    private static Participant participant(Long id, String email) {
-        Participant participant = new Participant(email, "motdepasse");
-        participant.setId(id);
-        return participant;
+        assertThrows(ParticipantHorsBlindTestException.class,
+                () -> mettreEnPauseBlindTestUseCase.apply(participant("david@esgi.fr"), blindTest));
     }
 }

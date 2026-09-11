@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
@@ -29,6 +30,7 @@ import java.util.List;
 @NoArgsConstructor
 public class BlindTestEntity {
 
+    // L'identifiant est une preoccupation de persistance : il ne sort pas de infra.
     @Id
     @GeneratedValue
     private Long id;
@@ -59,8 +61,10 @@ public class BlindTestEntity {
     @Column(name = "etat_lecture", nullable = false, length = 20)
     private EtatLecture etatLecture = EtatLecture.PAUSE;
 
-    @Column(name = "id_participant_reservataire")
-    private Long idParticipantReservataire;
+    // Participant qui a gagne le premier clic sur le morceau courant.
+    @ManyToOne
+    @JoinColumn(name = "reservataire_id")
+    private ParticipantEntity reservataire;
 
     @Version
     @Column(name = "version", nullable = false)

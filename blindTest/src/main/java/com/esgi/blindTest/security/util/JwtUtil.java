@@ -22,10 +22,10 @@ public class JwtUtil {
         this.expiration = expiration;
     }
 
-    public String generateToken(Long id, String email, String role) {
+    // Le sujet du jeton est l'email : c'est la cle naturelle d'un participant.
+    public String generateToken(String email, String role) {
         return Jwts.builder()
                 .subject(email)
-                .claim("id", id)
                 .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
@@ -35,11 +35,6 @@ public class JwtUtil {
 
     public String extractUsername(String token) {
         return parseClaims(token).getSubject();
-    }
-
-    public Long extractId(String token) {
-        Number identifiant = parseClaims(token).get("id", Number.class);
-        return identifiant == null ? null : identifiant.longValue();
     }
 
     public String extractRole(String token) {

@@ -34,10 +34,9 @@ public class JwtFilter extends OncePerRequestFilter {
         Optional<String> jeton = jetonDuCookie(request).or(() -> jetonDeLEntete(request));
 
         if (jeton.isPresent() && jwtUtil.isTokenValid(jeton.get())) {
-            // Le principal est le participant du domaine : les controleurs n'ont donc
-            // pas besoin d'un repository pour savoir qui parle.
+            // Le principal est le participant du domaine, identifie par son email :
+            // les controleurs n'ont donc pas besoin d'un repository pour savoir qui parle.
             Participant participant = new Participant();
-            participant.setId(jwtUtil.extractId(jeton.get()));
             participant.setEmail(jwtUtil.extractUsername(jeton.get()));
 
             var authentification = new UsernamePasswordAuthenticationToken(

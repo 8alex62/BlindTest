@@ -28,13 +28,13 @@ public class FaireUnePropositionAdapter implements FaireUnePropositionUseCase.Ou
 
     @Override
     public BlindTest findBlindTest(BlindTest blindTest) {
-        return blindTestRepository.findById(blindTest.getId())
+        return blindTestRepository.findByNom(blindTest.getNom())
                 .orElseThrow(BlindTestIntrouvableException::new);
     }
 
     @Override
-    public void ajouterUnPoint(Participation participation) {
-        participationRepository.ajouterUnPoint(participation);
+    public void ajouterUnPoint(BlindTest blindTest, Participation participation) {
+        participationRepository.ajouterUnPoint(blindTest.getNom(), participation);
     }
 
     @Override

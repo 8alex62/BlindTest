@@ -2,7 +2,6 @@ package com.esgi.blindTest.security.service;
 
 import com.esgi.blindTest.domain.model.Participant;
 import com.esgi.blindTest.security.util.JwtUtil;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
@@ -27,7 +26,7 @@ public class AuthenticationService {
     }
 
     public String genererLeJeton(Participant participant) {
-        return jwtUtil.generateToken(participant.getId(), participant.getEmail(), ROLE_PARTICIPANT);
+        return jwtUtil.generateToken(participant.getEmail(), ROLE_PARTICIPANT);
     }
 
     /**

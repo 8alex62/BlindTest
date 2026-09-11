@@ -9,8 +9,12 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface BlindTestJpaRepository extends JpaRepository<BlindTestEntity, Long> {
+
+    // Methode derivee
+    Optional<BlindTestEntity> findByNom(String nom);
 
     List<BlindTestEntity> findByStatutIn(Collection<StatutBlindTest> statuts);
 
@@ -23,15 +27,15 @@ public interface BlindTestJpaRepository extends JpaRepository<BlindTestEntity, L
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "UPDATE blind_test"
-            + "    SET id_participant_reservataire = :idParticipant,"
+            + "    SET reservataire_id = :idParticipant,"
             + "        etat_lecture = 'PAUSE',"
             + "        version = version + 1"
-            + "  WHERE id = :idBlindTest"
+            + "  WHERE nom = :nom"
             + "    AND statut = 'EN_COURS'"
             + "    AND index_morceau_courant = :indexMorceau"
-            + "    AND id_participant_reservataire IS NULL",
+            + "    AND reservataire_id IS NULL",
             nativeQuery = true)
-    int reserverLaReponse(@Param("idBlindTest") Long idBlindTest,
+    int reserverLaReponse(@Param("nom") String nom,
                           @Param("idParticipant") Long idParticipant,
                           @Param("indexMorceau") int indexMorceau);
 }

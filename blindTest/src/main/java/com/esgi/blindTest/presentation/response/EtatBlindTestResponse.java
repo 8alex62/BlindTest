@@ -9,8 +9,7 @@ import java.util.List;
  * Etat publie au navigateur. Le titre du morceau courant n'y figure jamais :
  * c'est la reponse a trouver.
  */
-public record EtatBlindTestResponse(Long id,
-                                    String nom,
+public record EtatBlindTestResponse(String nom,
                                     StatutBlindTest statut,
                                     EtatLecture etatLecture,
                                     int numeroDuMorceau,

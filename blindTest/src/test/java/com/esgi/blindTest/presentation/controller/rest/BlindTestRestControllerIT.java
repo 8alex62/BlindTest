@@ -78,7 +78,9 @@ class BlindTestRestControllerIT {
         doThrow(new ReponseDejaReserveeException())
                 .when(mettreEnPauseBlindTestUseCase).apply(any(), any());
 
-        mockMvc.perform(MockMvcRequestBuilders.post("/api/blindtests/1/pause"))
+        // Le blind test est designe par son nom : passe en variable d'URI pour que
+        // l'espace soit encode une seule fois.
+        mockMvc.perform(MockMvcRequestBuilders.post("/api/blindtests/{nom}/pause", "Soiree ESGI"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").isNotEmpty());
     }

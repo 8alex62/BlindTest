@@ -15,7 +15,7 @@ public class ConsulterEtatBlindTestAdapter implements ConsulterEtatBlindTestUseC
 
     @Override
     public BlindTest findBlindTest(BlindTest blindTest) {
-        return blindTestRepository.findById(blindTest.getId())
+        return blindTestRepository.findByNom(blindTest.getNom())
                 .orElseThrow(BlindTestIntrouvableException::new);
     }
 }

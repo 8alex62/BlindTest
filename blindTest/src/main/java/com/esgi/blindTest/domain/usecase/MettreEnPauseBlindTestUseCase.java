@@ -1,8 +1,13 @@
 package com.esgi.blindTest.domain.usecase;
 
+import com.esgi.blindTest.domain.exception.BlindTestNonDemarreException;
+import com.esgi.blindTest.domain.exception.BlindTestTermineException;
+import com.esgi.blindTest.domain.exception.ParticipantHorsBlindTestException;
 import com.esgi.blindTest.domain.exception.ReponseDejaReserveeException;
 import com.esgi.blindTest.domain.model.BlindTest;
+import com.esgi.blindTest.domain.model.EtatLecture;
 import com.esgi.blindTest.domain.model.Participant;
+import com.esgi.blindTest.domain.model.StatutBlindTest;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -26,12 +31,36 @@ public class MettreEnPauseBlindTestUseCase {
 
     public void apply(Participant participant, BlindTest blindtest) {
         BlindTest courant = output.findBlindTest(blindtest);
-        // La regle est portee par le domaine.
-        courant.reserverLaReponse(participant);
-        // La base n'arbitre pas la regle, elle arbitre l'ordre d'arrivee.
-        if (!output.reserverLaReponse(courant)) {
-            courant.annulerLaReservation();
+
+        if (courant.getStatut() == StatutBlindTest.TERMINE) {
+            throw new BlindTestTermineException();
+        }
+        if (courant.getStatut() != StatutBlindTest.EN_COURS) {
+            throw new BlindTestNonDemarreException();
+        }
+        if (!estInscrit(courant, participant)) {
+            throw new ParticipantHorsBlindTestException();
+        }
+        // Regle metier : un seul reservataire de reponse a la fois.
+        if (courant.getReservataire() != null) {
             throw new ReponseDejaReserveeException();
         }
+
+        // Regle metier : le premier clic met la lecture en pause et reserve la reponse.
+        courant.setEtatLecture(EtatLecture.PAUSE);
+        courant.setReservataire(participant);
+
+        // La base n'arbitre pas la regle, elle arbitre l'ordre d'arrivee.
+        if (!output.reserverLaReponse(courant)) {
+            courant.setReservataire(null);
+            courant.setEtatLecture(EtatLecture.LECTURE);
+            throw new ReponseDejaReserveeException();
+        }
+    }
+
+    private static boolean estInscrit(BlindTest blindTest, Participant participant) {
+        return participant != null && blindTest.getParticipations().stream()
+                .anyMatch(participation -> participation.getParticipant().getEmail()
+                        .equals(participant.getEmail()));
     }
 }
